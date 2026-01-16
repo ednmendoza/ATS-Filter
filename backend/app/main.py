@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List
@@ -53,30 +53,48 @@ async def root():
 @app.post("/resumes/upload", response_model=ResumeResponse)
 async def upload_resume(
     file: UploadFile = File(...),
-    user_id: str = "default_user",  # TODO: Get from auth
+    user_id: str = Form("default_user"),  # TODO: Get from auth
     db: Session = Depends(get_db)
 ):
     """Upload and parse a resume file"""
+    # Validate file
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+    
     # Read file content
-    file_content = await file.read()
+    try:
+        file_content = await file.read()
+        if not file_content or len(file_content) == 0:
+            raise HTTPException(status_code=400, detail="File is empty")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error reading file: {str(e)}")
     
     # Parse resume
     try:
-        parsed_data = parse_resume(file_content, file.filename)
+        parsed_data = parse_resume(file_content, file.filename or "unknown")
+        if not parsed_data.get("raw_text") or len(parsed_data["raw_text"].strip()) == 0:
+            raise HTTPException(status_code=400, detail="Could not extract text from file. Please ensure the file is a valid PDF, DOCX, or TXT file.")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error parsing resume: {str(e)}")
     
     # Save to database
-    resume = Resume(
-        user_id=user_id,
-        raw_text=parsed_data["raw_text"],
-        parsed_json=parsed_data.get("parsed_json")
-    )
-    db.add(resume)
-    db.commit()
-    db.refresh(resume)
-    
-    return resume
+    try:
+        resume = Resume(
+            user_id=user_id,
+            raw_text=parsed_data["raw_text"],
+            parsed_json=parsed_data.get("parsed_json")
+        )
+        db.add(resume)
+        db.commit()
+        db.refresh(resume)
+        return resume
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error saving resume: {str(e)}")
 
 
 @app.get("/resumes/{resume_id}", response_model=ResumeResponse)

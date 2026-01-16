@@ -44,7 +44,19 @@ export default function ResumeUpload({ onUploadSuccess }: ResumeUploadProps) {
       setSuccess(true)
       onUploadSuccess(resume.id)
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Upload failed. Please try again.')
+      console.error('Upload error:', err)
+      // Handle different error types
+      if (err.response) {
+        // Server responded with error
+        const errorDetail = err.response?.data?.detail || err.response?.data?.message || 'Upload failed'
+        setError(errorDetail)
+      } else if (err.request) {
+        // Request made but no response
+        setError('Unable to connect to server. Please check if the backend is running.')
+      } else {
+        // Something else happened
+        setError(err.message || 'Upload failed. Please try again.')
+      }
     } finally {
       setUploading(false)
     }

@@ -48,11 +48,8 @@ export const resumeApi = {
     formData.append('file', file)
     formData.append('user_id', userId)
     
-    const response = await api.post<Resume>('/resumes/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    })
+    // Don't set Content-Type header - axios will set it automatically with boundary
+    const response = await api.post<Resume>('/resumes/upload', formData)
     return response.data
   },
 
